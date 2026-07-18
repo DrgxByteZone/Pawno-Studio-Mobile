@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.25"
+        android:scaleY="0.25"
+        android:translateX="26"
+        android:translateY="26">
+        <!-- Main 2D Minimalist Panther Silhouette -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M128,12 L175,55 L215,90 L245,150 L235,175 L200,165 L180,205 L150,225 L128,245 L106,225 L76,205 L56,165 L21,175 L11,150 L41,90 L81,55 Z" />
+        <!-- Sharp geometric cutouts -->
+        <path
+            android:fillColor="#0E1117"
+            android:pathData="M128,45 L145,95 L111,95 Z" />
+        <path
+            android:fillColor="#0E1117"
+            android:pathData="M65,115 L95,125 L75,150 Z" />
+        <path
+            android:fillColor="#0E1117"
+            android:pathData="M191,115 L161,125 L181,150 Z" />
+        <path
+            android:fillColor="#0E1117"
+            android:pathData="M128,155 L150,185 L106,185 Z" />
+        <path
+            android:fillColor="#0E1117"
+            android:pathData="M128,195 L140,220 L116,220 Z" />
+    </group>
+</vector>

@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Pawno Studio Mobile</string>
+    <string name="app_tagline">Grand Theft Auto: San Andreas Multiplayer Pawn IDE</string>
+    <string name="company_name">Blackpanther Company</string>
+    <string name="credits">By M.B.A &amp; AXEL</string>
+    <string name="compiler_pawn_mc">Inspired by Pawn-MC</string>
+</resources>

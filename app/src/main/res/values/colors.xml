@@ -1,0 +1,12 @@
+<resources>
+    <color name="bg_root">#0E1117</color>
+    <color name="bg_surface">#161B22</color>
+    <color name="bg_elevated">#21262D</color>
+    <color name="border_color">#30363D</color>
+    <color name="text_primary">#E6EDF3</color>
+    <color name="text_secondary">#8B949E</color>
+    <color name="accent_primary">#58A6FF</color>
+    <color name="accent_success">#3FB950</color>
+    <color name="accent_warning">#D29922</color>
+    <color name="accent_error">#F85149</color>
+</resources>

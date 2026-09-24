@@ -648,10 +648,6 @@ static void plnge2(void (*oper)(void),
     if ((oper==os_div || oper==os_mod) && lval2->ident==iCONSTEXPR && lval2->constval==0)
       error(94); /* division by zero */
 
-    /* If we're handling an integer division operation, make sure the divisor is not zero. */
-    if ((oper==os_div || oper==os_mod) && lval2->ident==iCONSTEXPR && lval2->constval==0)
-      error(94); /* division by zero */
-
     if (check_userop(oper,lval1->tag,lval2->tag,2,NULL,&lval1->tag)) {
       lval1->ident=iEXPRESSION;
       lval1->constval=0;

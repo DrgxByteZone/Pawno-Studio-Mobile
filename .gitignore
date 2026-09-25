@@ -1,0 +1,23 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/app/build
+/app/.cxx
+.cxx
+captures/
+.externalNativeBuild
+.cxx/
+*.apk
+*.aab
+output-metadata.json
+
+# Temporary / testing folders
+/foto error/
+/pawn_comp_screenshots/
+/gamemode-sale/
+GAMEMODE-SALE.zip
+*.log
+.kotlin

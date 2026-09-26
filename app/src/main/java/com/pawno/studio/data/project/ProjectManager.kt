@@ -134,7 +134,14 @@ class ProjectManager(private val context: Context? = null) {
 
     suspend fun readFile(file: ProjectFile): String = withContext(Dispatchers.IO) {
         if (file.file.exists()) {
-            file.file.readText()
+            if (file.file.length() > 10 * 1024 * 1024) {
+                return@withContext "// [File exceeds 10MB limit - cannot preview in editor]"
+            }
+            try {
+                file.file.readText()
+            } catch (e: Exception) {
+                "// [Error reading file: ${e.message}]"
+            }
         } else {
             ""
         }

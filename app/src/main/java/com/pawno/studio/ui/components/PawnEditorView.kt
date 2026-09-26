@@ -52,13 +52,12 @@ fun PawnEditorView(
                     onCursorChange(cursor.leftLine + 1, cursor.leftColumn + 1)
                 }
 
-                onEditorReady(this)
                 onEditorCreated(this)
             }
         },
         update = { editor ->
-            // Prevent resetting if content matches
-            if (editor.text.toString() != initialContent && initialContent.isNotEmpty()) {
+            // Check length first to avoid allocating huge String on every recomposition
+            if (initialContent.isNotEmpty() && (editor.text.length != initialContent.length || editor.text.toString() != initialContent)) {
                 val cursor = editor.cursor
                 val line = cursor.leftLine
                 val col = cursor.leftColumn
@@ -66,6 +65,7 @@ fun PawnEditorView(
                 try {
                     editor.setSelection(line, col)
                 } catch (_: Exception) {}
+                editor.rerunAnalysis()
             }
         }
     )

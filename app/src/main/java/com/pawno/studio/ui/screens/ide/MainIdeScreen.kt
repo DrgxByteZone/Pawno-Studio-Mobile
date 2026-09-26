@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -430,20 +431,21 @@ fun MainIdeScreen(
                     .background(BgRoot)
             ) {
                 if (viewModel.activeFile != null) {
-                    PawnEditorView(
-                        initialContent = fileContent,
-                        onContentChange = { newText ->
-                            viewModel.onContentChanged(newText)
-                        },
-                        onCursorChange = { line, col ->
-                            viewModel.updateCursor(line, col)
-                        },
-                        onEditorCreated = { editor ->
-                            editorRef = editor
-                            editor.setEditorLanguage(PawnLanguage())
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    key(viewModel.activeFile?.absolutePath) {
+                        PawnEditorView(
+                            initialContent = fileContent,
+                            onContentChange = { newText ->
+                                viewModel.onContentChanged(newText)
+                            },
+                            onCursorChange = { line, col ->
+                                viewModel.updateCursor(line, col)
+                            },
+                            onEditorCreated = { editor ->
+                                editorRef = editor
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 } else {
                     Box(
                         modifier = Modifier.fillMaxSize(),

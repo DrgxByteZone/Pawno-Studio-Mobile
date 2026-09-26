@@ -25,8 +25,29 @@ class PawnLexer {
     }
 
     fun tokenize(text: CharSequence, callback: TokenCallback) {
+        tokenize(text, false, callback)
+    }
+
+    fun tokenize(text: CharSequence, initialInBlockComment: Boolean, callback: TokenCallback): Boolean {
         var i = 0
         val len = text.length
+        var inBlockComment = initialInBlockComment
+
+        // If line started inside a block comment from previous lines
+        if (inBlockComment) {
+            val start = i
+            while (i + 1 < len && !(text[i] == '*' && text[i + 1] == '/')) {
+                i++
+            }
+            if (i + 1 < len) {
+                i += 2 // Skip closing */
+                inBlockComment = false
+                callback.onToken(PawnTokenType.COMMENT, start, i)
+            } else {
+                callback.onToken(PawnTokenType.COMMENT, start, len)
+                return true
+            }
+        }
 
         while (i < len) {
             val c = text[i]
@@ -52,8 +73,14 @@ class PawnLexer {
                     while (i + 1 < len && !(text[i] == '*' && text[i + 1] == '/')) {
                         i++
                     }
-                    if (i + 1 < len) i += 2 // Skip closing */
-                    callback.onToken(PawnTokenType.COMMENT, start, i)
+                    if (i + 1 < len) {
+                        i += 2 // Skip closing */
+                        callback.onToken(PawnTokenType.COMMENT, start, i)
+                    } else {
+                        // Multi-line comment continues past end of line
+                        callback.onToken(PawnTokenType.COMMENT, start, len)
+                        return true
+                    }
                     continue
                 }
             }
@@ -113,19 +140,43 @@ class PawnLexer {
                 continue
             }
 
-            // 6. Numbers (decimal, hex, float)
-            if (c.isDigit() || (c == '.' && i + 1 < len && text[i + 1].isDigit())) {
+            // 6. Numbers (decimal, hex, binary, float)
+            if (c.isDigit()) {
                 val start = i
                 if (c == '0' && i + 1 < len && (text[i + 1] == 'x' || text[i + 1] == 'X')) {
                     i += 2
                     while (i < len && (text[i].isDigit() || text[i] in 'a'..'f' || text[i] in 'A'..'F')) i++
+                } else if (c == '0' && i + 1 < len && (text[i + 1] == 'b' || text[i + 1] == 'B')) {
+                    i += 2
+                    while (i < len && (text[i] == '0' || text[i] == '1')) i++
                 } else {
-                    var hasDot = c == '.'
-                    while (i < len && (text[i].isDigit() || (!hasDot && text[i] == '.'))) {
-                        if (text[i] == '.') hasDot = true
+                    while (i < len && text[i].isDigit()) i++
+                    // Check for decimal dot only if NOT followed by another dot (which is range operator '..')
+                    if (i < len && text[i] == '.' && (i + 1 >= len || text[i + 1] != '.')) {
                         i++
+                        while (i < len && text[i].isDigit()) i++
+                    }
+                    // Optional scientific notation: 1.0e-5, 1e10
+                    if (i < len && (text[i] == 'e' || text[i] == 'E')) {
+                        val ePos = i
+                        i++
+                        if (i < len && (text[i] == '+' || text[i] == '-')) i++
+                        val afterSign = i
+                        while (i < len && text[i].isDigit()) i++
+                        if (i == afterSign) {
+                            i = ePos // Backtrack if no valid exponent digits
+                        }
                     }
                 }
+                callback.onToken(PawnTokenType.NUMBER, start, i)
+                continue
+            }
+
+            // Floating point starting with lone dot: .5 (avoid range operator '..')
+            if (c == '.' && i + 1 < len && text[i + 1].isDigit() && (i == 0 || text[i - 1] != '.')) {
+                val start = i
+                i++
+                while (i < len && text[i].isDigit()) i++
                 callback.onToken(PawnTokenType.NUMBER, start, i)
                 continue
             }
@@ -147,12 +198,12 @@ class PawnLexer {
                 continue
             }
 
-            // 8. Operators
-            if ("+-*/%=!<>|&^~?:".contains(c)) {
+            // 8. Operators (including '..' range operator)
+            if ("+-*/%=!<>|&^~?:.".contains(c)) {
                 val start = i
                 i++
-                // Multi-char operators like ==, !=, <=, >=, &&, ||, ++, --, +=, -=, *=, /=, ::
-                if (i < len && "+-*/%=!<>|&:".contains(text[i])) {
+                // Multi-char operators like ==, !=, <=, >=, &&, ||, ++, --, +=, -=, *=, /=, ::, .., >>, <<
+                if (i < len && "+-*/%=!<>|&:.>".contains(text[i])) {
                     i++
                 }
                 callback.onToken(PawnTokenType.OPERATOR, start, i)
@@ -170,6 +221,7 @@ class PawnLexer {
             callback.onToken(PawnTokenType.UNKNOWN, i, i + 1)
             i++
         }
+        return inBlockComment
     }
 
     fun tokenize(text: CharSequence): List<PawnToken> {

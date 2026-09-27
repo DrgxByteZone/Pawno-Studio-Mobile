@@ -9,6 +9,7 @@ import com.pawno.studio.data.amx.AmxInspector
 import com.pawno.studio.data.compiler.CompileOptions
 import com.pawno.studio.data.compiler.CompileResult
 import com.pawno.studio.data.compiler.CompilerSettingsRepository
+import com.pawno.studio.data.compiler.CompilerVersion
 import com.pawno.studio.data.compiler.PawnCompilerEngine
 import com.pawno.studio.data.includes.IncludeManager
 import com.pawno.studio.data.project.Project
@@ -266,17 +267,17 @@ class MainIdeViewModel(
         }
     }
 
-    fun compileMainGamemode() {
+    fun compileMainGamemode(overrideVersion: CompilerVersion? = null) {
         val target = _mainGamemodeFile.value ?: activeFile ?: return
-        compileSpecificFile(target)
+        compileSpecificFile(target, overrideVersion)
     }
 
-    fun compileCurrentFile() {
+    fun compileCurrentFile(overrideVersion: CompilerVersion? = null) {
         val file = activeFile ?: return
-        compileSpecificFile(file)
+        compileSpecificFile(file, overrideVersion)
     }
 
-    private fun compileSpecificFile(file: ProjectFile) {
+    private fun compileSpecificFile(file: ProjectFile, overrideVersion: CompilerVersion? = null) {
         if (_isCompiling.value) return
 
         viewModelScope.launch {
@@ -321,7 +322,7 @@ class MainIdeViewModel(
             val options = CompileOptions(
                 sourcePath = file.absolutePath,
                 outputAmxPath = amxFile.absolutePath,
-                compilerVersion = currentSettings.compilerVersion,
+                compilerVersion = overrideVersion ?: currentSettings.compilerVersion,
                 includePaths = includeDirs.distinct(),
                 optimizationLevel = currentSettings.optimizationLevel,
                 debugLevel = currentSettings.debugLevel,

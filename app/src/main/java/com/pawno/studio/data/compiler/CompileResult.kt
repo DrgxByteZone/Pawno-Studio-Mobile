@@ -12,10 +12,12 @@ data class CompileResult(
     val outputAmxFile: String? = null,
     val amxSizeBytes: Long = 0L,
     val compilerVersion: CompilerVersion = CompilerVersion.ZEEX_3_10_11,
-    val headerSizeBytes: Long = 0L
+    val headerSizeBytes: Long = 0L,
+    val isAutoRecovered: Boolean = false,
+    val autoRecoveryReason: String? = null
 ) {
     val isSuccess: Boolean
-        get() = exitCode == 0 && errorCount == 0
+        get() = (exitCode == 0 || (outputAmxFile != null && amxSizeBytes > 0)) && errorCount == 0
 
     val success: Boolean
         get() = isSuccess

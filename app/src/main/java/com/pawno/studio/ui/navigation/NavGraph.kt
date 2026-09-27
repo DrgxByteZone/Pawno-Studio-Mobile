@@ -67,6 +67,9 @@ fun PawnoNavGraph(
                 },
                 onJumpToLine = { line ->
                     ideViewModel.jumpToLine(line)
+                },
+                onRecompileWithVersion = { version ->
+                    ideViewModel.compileMainGamemode(version)
                 }
             )
         }

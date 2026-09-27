@@ -209,51 +209,97 @@ extern "C" int pc_error(int number, char* message, char* filename,
     return 0;
 }
 
-// Case-insensitive path resolver for Windows-ported SA-MP gamemodes on Android (Linux ext4)
+// Case-insensitive path resolver for Windows-ported SA-MP gamemodes on Android (Linux ext4 / FUSE)
 static std::string resolve_case_insensitive_path(const std::string& inputPath) {
     if (inputPath.empty()) return inputPath;
+
+    // Fast path: if path already exists directly, return it
     if (access(inputPath.c_str(), F_OK) == 0) {
         return inputPath;
     }
 
-    bool isAbsolute = (inputPath[0] == '/');
-    std::vector<std::string> parts;
-    std::stringstream ss(inputPath);
+    // Normalize Windows backslashes
+    std::string normalizedPath = inputPath;
+    for (char& c : normalizedPath) {
+        if (c == '\\') c = '/';
+    }
+
+    bool isAbsolute = (!normalizedPath.empty() && normalizedPath[0] == '/');
+    std::vector<std::string> rawParts;
+    std::stringstream ss(normalizedPath);
     std::string item;
     while (std::getline(ss, item, '/')) {
         if (!item.empty()) {
-            parts.push_back(item);
+            rawParts.push_back(item);
         }
     }
 
+    // Collapse '.' and '..' components to avoid FUSE opendir/stat failures on Android
+    std::vector<std::string> parts;
+    for (const auto& part : rawParts) {
+        if (part == ".") {
+            continue;
+        } else if (part == "..") {
+            if (!parts.empty() && parts.back() != "..") {
+                parts.pop_back();
+            } else if (!isAbsolute) {
+                parts.push_back("..");
+            }
+        } else {
+            parts.push_back(part);
+        }
+    }
+
+    // Reconstruct canonical path
+    std::string canonical;
+    if (isAbsolute) {
+        canonical = "/";
+    }
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0 || !isAbsolute) {
+            if (!canonical.empty() && canonical.back() != '/') canonical += "/";
+        }
+        canonical += parts[i];
+    }
+
+    // Check if canonical path exists directly
+    if (!canonical.empty() && access(canonical.c_str(), F_OK) == 0) {
+        return canonical;
+    }
+
+    // Walk components case-insensitively
     std::string current = isAbsolute ? "/" : ".";
     for (size_t i = 0; i < parts.size(); ++i) {
         const std::string& part = parts[i];
-        if (part == "." || part == "..") {
-            current += (current == "/" ? "" : "/") + part;
+        if (part == "..") {
+            current = (current == "/" ? "/" : current + "/") + part;
             continue;
         }
 
-        std::string candidate = current + (current == "/" ? "" : "/") + part;
+        std::string candidate = (current == "/" ? "/" : current + "/") + part;
         if (access(candidate.c_str(), F_OK) == 0) {
             current = candidate;
             continue;
         }
 
         DIR* dir = opendir(current.c_str());
-        if (!dir) return inputPath;
+        if (!dir) {
+            return canonical.empty() ? inputPath : canonical;
+        }
 
         struct dirent* entry;
         bool found = false;
         while ((entry = readdir(dir)) != nullptr) {
             if (strcasecmp(entry->d_name, part.c_str()) == 0) {
-                current += (current == "/" ? "" : "/") + std::string(entry->d_name);
+                current = (current == "/" ? "/" : current + "/") + std::string(entry->d_name);
                 found = true;
                 break;
             }
         }
         closedir(dir);
-        if (!found) return inputPath;
+        if (!found) {
+            return canonical.empty() ? inputPath : canonical;
+        }
     }
     return current;
 }
@@ -294,8 +340,19 @@ extern "C" void* pc_opensrc(char* filename) {
             g_srcCache[fname] = "";
         } else {
             std::string content(fsize, '\0');
-            size_t bytesRead = fread(&content[0], 1, fsize, f);
-            content.resize(bytesRead);
+            size_t totalBytesRead = 0;
+            while (totalBytesRead < static_cast<size_t>(fsize)) {
+                size_t n = fread(&content[totalBytesRead], 1, static_cast<size_t>(fsize) - totalBytesRead, f);
+                if (n == 0) {
+                    if (feof(f)) break;
+                    if (ferror(f)) {
+                        LOGE("Error reading file %s at offset %zu: %s", fname.c_str(), totalBytesRead, strerror(errno));
+                        break;
+                    }
+                }
+                totalBytesRead += n;
+            }
+            content.resize(totalBytesRead);
             fclose(f);
             g_srcCache[fname] = std::move(content);
         }
@@ -458,8 +515,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6;
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_pawno_studio_data_compiler_PawnCompilerEngine_compileNative(
+static jstring compileInternalCommon(
     JNIEnv* env, jobject thiz,
     jobjectArray args, jstring cacheDir
 ) {
@@ -518,6 +574,7 @@ Java_com_pawno_studio_data_compiler_PawnCompilerEngine_compileNative(
         pthread_attr_destroy(&attr);
         pthread_join(thread, nullptr);
     }
+    g_srcCache.clear();
 
     std::string diagList = g_structuredDiagnostics.str();
     if (!diagList.empty() && diagList.back() == ',') {
@@ -537,5 +594,39 @@ Java_com_pawno_studio_data_compiler_PawnCompilerEngine_compileNative(
 
     return env->NewStringUTF(resultJson.str().c_str());
 }
+
+#if defined(PAWNC_BUILD_32)
+JNIEXPORT jstring JNICALL
+Java_com_pawno_studio_data_compiler_PawnCompilerEngine_compileNative32(
+    JNIEnv* env, jobject thiz,
+    jobjectArray args, jstring cacheDir
+) {
+    return compileInternalCommon(env, thiz, args, cacheDir);
+}
+#elif defined(PAWNC_BUILD_3107)
+JNIEXPORT jstring JNICALL
+Java_com_pawno_studio_data_compiler_PawnCompilerEngine_compileNative3107(
+    JNIEnv* env, jobject thiz,
+    jobjectArray args, jstring cacheDir
+) {
+    return compileInternalCommon(env, thiz, args, cacheDir);
+}
+#else
+JNIEXPORT jstring JNICALL
+Java_com_pawno_studio_data_compiler_PawnCompilerEngine_compileNative31011(
+    JNIEnv* env, jobject thiz,
+    jobjectArray args, jstring cacheDir
+) {
+    return compileInternalCommon(env, thiz, args, cacheDir);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_pawno_studio_data_compiler_PawnCompilerEngine_compileNative(
+    JNIEnv* env, jobject thiz,
+    jobjectArray args, jstring cacheDir
+) {
+    return compileInternalCommon(env, thiz, args, cacheDir);
+}
+#endif
 
 } // extern "C"

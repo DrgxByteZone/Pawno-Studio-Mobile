@@ -267,11 +267,31 @@ static FILE *case_insensitive_fopen(char *filename, const char *mode)
 
   char *saveptr = NULL;
   char *token = strtok_r(temp, "/\\", &saveptr);
-  if (filename[0] == '/' || filename[0] == '\\') {
+  int is_abs = (filename[0] == '/' || filename[0] == '\\');
+
+  // Tokenize and collapse '.' and '..'
+  char *parts[64];
+  int part_count = 0;
+  while (token != NULL && part_count < 63) {
+    if (strcmp(token, ".") == 0) {
+      // skip
+    } else if (strcmp(token, "..") == 0) {
+      if (part_count > 0 && strcmp(parts[part_count - 1], "..") != 0) {
+        part_count--;
+      } else if (!is_abs) {
+        parts[part_count++] = token;
+      }
+    } else {
+      parts[part_count++] = token;
+    }
+    token = strtok_r(NULL, "/\\", &saveptr);
+  }
+
+  if (is_abs) {
     strcat(resolved, "/");
   }
 
-  while (token != NULL) {
+  for (int i = 0; i < part_count; i++) {
     char dir_to_open[1024];
     if (resolved[0] == '\0') {
       strcpy(dir_to_open, ".");
@@ -283,6 +303,13 @@ static FILE *case_insensitive_fopen(char *filename, const char *mode)
         dir_to_open[len - 1] = '\0';
     }
 
+    if (strcmp(parts[i], "..") == 0) {
+      if (resolved[0] != '\0' && resolved[strlen(resolved) - 1] != '/')
+        strcat(resolved, "/");
+      strcat(resolved, "..");
+      continue;
+    }
+
     DIR *dir = opendir(dir_to_open);
     if (!dir)
       return NULL;
@@ -290,7 +317,7 @@ static FILE *case_insensitive_fopen(char *filename, const char *mode)
     struct dirent *entry;
     int matched = 0;
     while ((entry = readdir(dir)) != NULL) {
-      if (strcasecmp(entry->d_name, token) == 0) {
+      if (strcasecmp(entry->d_name, parts[i]) == 0) {
         if (resolved[0] != '\0' && resolved[strlen(resolved) - 1] != '/')
           strcat(resolved, "/");
         strncat(resolved, entry->d_name, sizeof(resolved) - strlen(resolved) - 1);
@@ -302,8 +329,6 @@ static FILE *case_insensitive_fopen(char *filename, const char *mode)
 
     if (!matched)
       return NULL;
-
-    token = strtok_r(NULL, "/\\", &saveptr);
   }
 
   fp = fopen(resolved, mode);

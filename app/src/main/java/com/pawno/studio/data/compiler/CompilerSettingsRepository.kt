@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.map
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "pawno_compiler_prefs")
 
 data class CompilerSettingsData(
-    val compilerVersionId: String = CompilerVersion.ZEEX_3_10_11.id,
+    val compilerVersionId: String = CompilerVersion.AUTO.id,
     val debugLevel: Int = 2,
     val optimizationLevel: Int = 2,
     val stackReserveBytes: Int = 16384,
@@ -52,7 +52,7 @@ class CompilerSettingsRepository(private val context: Context) {
     }
 
     val settingsFlow: Flow<CompilerSettingsData> = context.dataStore.data.map { preferences ->
-        val version = preferences[PreferencesKeys.COMPILER_VERSION] ?: CompilerVersion.ZEEX_3_10_11.id
+        val version = preferences[PreferencesKeys.COMPILER_VERSION] ?: CompilerVersion.AUTO.id
         val debug = preferences[PreferencesKeys.DEBUG_LEVEL] ?: 2
         val opt = preferences[PreferencesKeys.OPTIMIZATION_LEVEL] ?: 2
         val stack = preferences[PreferencesKeys.STACK_RESERVE] ?: 16384

@@ -138,8 +138,10 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         listOf(
-                            CompilerVersion.PAWN_3_10_11 to "Pawn 3.10.11 (Zeex) - Recommended",
-                            CompilerVersion.PAWN_3_10_7 to "Pawn 3.10.7 (Legacy SA-MP 0.3.7)"
+                            CompilerVersion.AUTO to "Auto-Detect (Smart Recommended)",
+                            CompilerVersion.PAWN_3_10_11 to "Pawn 3.10.11 (Zeex Modern)",
+                            CompilerVersion.PAWN_3_10_7 to "Pawn 3.10.7 (Zeex Classic)",
+                            CompilerVersion.PAWN_3_2 to "Pawn 3.2.3664 (CompuPhase Legacy)"
                         ).forEach { (version, label) ->
                             val isSelected = currentSettings.compilerVersion == version
                             Row(

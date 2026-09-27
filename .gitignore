@@ -16,9 +16,17 @@ output-metadata.json
 
 # Temporary / testing folders
 /foto error/
+/err/
 /pawn_comp_screenshots/
 /pawn_studio_screenshots/
 /gamemode-sale/
 GAMEMODE-SALE.zip
+/yura project/
+/YURA PROJECT/
+YURA PROJECT.7z
+/inferno/
+Atlantic.xml
+*.amx
 *.log
 .kotlin
+

@@ -41,7 +41,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.graphics.RectangleShape
 import com.pawno.studio.data.compiler.CompileResult
+import com.pawno.studio.data.compiler.CompilerVersion
 import com.pawno.studio.data.compiler.DiagnosticItem
 import com.pawno.studio.data.compiler.DiagnosticSeverity
 import com.pawno.studio.ui.components.FlatButton
@@ -68,7 +74,8 @@ enum class DiagnosticFilter {
 fun DiagnosticsScreen(
     compileResult: CompileResult?,
     onNavigateBack: () -> Unit,
-    onJumpToLine: (Int) -> Unit
+    onJumpToLine: (Int) -> Unit,
+    onRecompileWithVersion: ((CompilerVersion) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var selectedFilter by remember { mutableStateOf(DiagnosticFilter.ALL) }
@@ -168,6 +175,80 @@ fun DiagnosticsScreen(
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace
                     )
+                }
+            }
+        }
+
+        // Auto-Recovery / Smart Fallback Card
+        if (compileResult?.isAutoRecovered == true) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0D2818))
+                    .border(1.dp, Color(0xFF2EA043))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF2EA043),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = compileResult.autoRecoveryReason ?: "⚡ Auto-Recovery: Sukses ter-compile via Pawn 3.2.3664 (Legacy)!",
+                        color = Color(0xFF7EE787),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        } else if (compileResult != null && compileResult.hasErrors && compileResult.compilerVersion != CompilerVersion.COMPUPHASE_3_2) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF241C07))
+                    .border(1.dp, Color(0xFFD29922))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = "💡 Terdeteksi Gamemode Native / Inferno",
+                            color = Color(0xFFF2CC60),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "Script lama butuh toleransi Pawn 3.2 (CompuPhase).",
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            onRecompileWithVersion?.invoke(CompilerVersion.COMPUPHASE_3_2)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD29922)),
+                        shape = RectangleShape,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Coba Pawn 3.2",
+                            color = Color.Black,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }

@@ -18,7 +18,6 @@
   <img src="https://img.shields.io/badge/Compilers-Pawn_3.2_%7C_3.10.7_%7C_3.10.11-red.svg" alt="Compiler">
   <img src="https://img.shields.io/badge/ABI-arm64--v8a_%7C_armeabi--v7a_%7C_x86__64-darkblue.svg" alt="ABI">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow.svg" alt="License"></a>
-  <a href="https://github.com/DrgxByteZone/Pawno-Studio-Mobile/actions"><img src="https://img.shields.io/badge/CI-Passing-success.svg" alt="CI"></a>
 </p>
 
 ---

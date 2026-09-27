@@ -1,0 +1,107 @@
+name: Publish GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build & Publish Release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK & NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK & CMake
+        run: |
+          echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.2.11394342" "cmake;3.22.1"
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x ./gradlew
+
+      - name: Build Release and Debug APKs
+        run: ./gradlew assembleRelease assembleDebug --stacktrace
+
+      - name: Prepare Release Artifacts
+        id: prepare_artifacts
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME:-v1.0.0}"
+          mkdir -p release-artifacts
+          
+          # Copy APKs with clear versioned names
+          cp app/build/outputs/apk/release/app-release.apk "release-artifacts/PawnoStudio-${TAG_NAME}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "release-artifacts/PawnoStudio-${TAG_NAME}-debug.apk"
+          
+          # Generate checksums
+          cd release-artifacts
+          sha256sum "PawnoStudio-${TAG_NAME}.apk" > "PawnoStudio-${TAG_NAME}.apk.sha256"
+          sha256sum "PawnoStudio-${TAG_NAME}-debug.apk" > "PawnoStudio-${TAG_NAME}-debug.apk.sha256"
+          cat *.sha256 > SHA256SUMS.txt
+          cd ..
+
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          cat << 'EOF' > release_body.md
+          ## 🚀 Pawno Studio Mobile v1.0.0 (Initial Open Source Release)
+
+          The ultimate native Pawn integrated development environment (IDE) and compiler for Android. Compile San Andreas Multiplayer (SA-MP) and open.mp scripts 100% locally on your smartphone with desktop-grade speeds.
+
+          ---
+
+          ### ✨ Key Features & Highlights
+          - **Triple Native Compiler Engines**: Embedded **CompuPhase Pawn 3.2 Legacy**, **Zeex Pawn 3.10.7**, and **Zeex Pawn 3.10.11** (`arm64-v8a`, `armeabi-v7a`, `x86_64`).
+          - **57,000x Speed Optimization**: Memoized DFS call-graph stack calculation, $O(1)$ linked-list tail caches, and 64KB bytecode write buffers.
+          - **100,000+ Lines Gamemode Verified**: Compiles monolithic gamemodes like *Atlantic.pwn* (~108,000 lines, 91.5MB AMX) in ~2 minutes with 0 errors!
+          - **Android FUSE Resilience**: Stack-based path normalizer resolving Windows relative includes (`..`) and multi-chunk `fread` buffer loop.
+          - **Smart Auto-Recovery**: Automatically detects and recovers legacy syntax errors with Pawn 3.2.
+          - **Mobile-First Code Editor**: Pawn syntax highlighting, quick symbol drawer, jump-to-line error navigation.
+          - **Native AMX Inspector**: Inspect public functions, native imports, and stack/heap memory consumption.
+
+          ---
+
+          ### 📦 Installation
+          1. Download **`PawnoStudio-${{ github.ref_name }}.apk`** below.
+          2. Install the APK on your Android device (requires Android 7.0 / API 24 or newer).
+          3. Grant storage permissions when prompted.
+          4. Open your `.pwn` gamemode or filterscript and tap **Compile**!
+
+          ---
+
+          ### 📄 Research & Architecture
+          - Read the full technical whitepaper and benchmark breakdown: [RESEARCH_OPTIMASI_PAWNC32.md](https://github.com/DrgxByteZone/Pawno-Studio-Mobile/blob/main/RESEARCH_OPTIMASI_PAWNC32.md)
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: "Pawno Studio Mobile ${{ github.ref_name }}"
+          body_path: release_body.md
+          draft: false
+          prerelease: false
+          files: |
+            release-artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

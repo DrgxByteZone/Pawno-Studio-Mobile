@@ -1,192 +1,154 @@
-# 🚀 Dokumentasi Teknis & Riset Lengkap: Integrasi & Optimasi Pawn 3.2 di Pawno Studio Mobile
+# Riset & Optimasi Engine Pawn 3.2 pada Pawno Studio Mobile
 
-> **Studi Kasus:** Membedah Gamemode Raksasa *Atlantic.pwn* (~108.000 Baris) dari **Hang 14+ Menit / Crash & 27 Error FUSE** Menjadi **~2 Menit & 0 Error** di Android.  
-> **Target Arsitektur:** ARM64-v8a, ARMeabi-v7a, x86_64 (Android 7.0 - 15+).  
-> **Penyusun:** Tim Pengembang Pawno Studio Mobile.
-
----
-
-## 📑 Daftar Isi
-1. [Latar Belakang & Masalah Utama](#1-latar-belakang--masalah-utama)
-2. [Daftar Lengkap File yang Ditambahkan & Dimodifikasi](#2-daftar-lengkap-file-yang-ditambahkan--dimodifikasi)
-3. [Optimasi Algoritmik Performa (Pawn C Engine)](#3-optimasi-algoritmik-performa-pawn-c-engine)
-4. [Perbaikan Kompatibilitas Semantik & Macro Pawn](#4-perbaikan-kompatibilitas-semantik--macro-pawn)
-5. [Penyelesaian Masalah Filesystem Android FUSE (Analisis Foto Error)](#5-penyelesaian-masalah-filesystem-android-fuse-analisis-foto-error)
-6. [Arsitektur Native Multi-Version & CMake](#6-arsitektur-native-multi-version--cmake)
-7. [Integrasi Kotlin & Lapisan Aplikasi Android](#7-integrasi-kotlin--lapisan-aplikasi-android)
-8. [Tabel Komparasi & Hasil Benchmark Akhir](#8-tabel-komparasi--hasil-benchmark-akhir)
+> **Studi Kasus:** Mengatasi Infinite Freeze (>14 Menit), Crash I/O FUSE, dan Limitasi Compiler pada Gamemode Monolitik *Atlantic.pwn* (~108.000 Baris) hingga Siap Dikompilasi dalam ~2 Menit di Android.  
+> **Platform & Arsitektur:** Android NDK (ARM64-v8a, ARMeabi-v7a, x86_64).  
+> **Author:** Axel (@DrgxByteZone) & M.B.A (Blackpanther Company).
 
 ---
 
-## 1. Latar Belakang & Masalah Utama
+## 1. Latar Belakang & Akar Masalah
 
-Compiler **Pawn 3.2.3664 (CompuPhase Legacy)** adalah standar *de facto* gamemode SA-MP era klasik hingga modern. Banyak gamemode besar di Indonesia (seperti *Atlantic.pwn* berukuran **6,74 MB dengan 108.381 baris kode**) dirancang khusus untuk syntax Pawn 3.2 dan akan memunculkan ratusan error jika dikompilasi pada compiler Pawn 3.10 Community.
+Compiler **Pawn 3.2.3664 (CompuPhase Legacy)** adalah standar yang digunakan oleh mayoritas server SA-MP klasik hingga roleplay Indonesia modern. Gamemode besar seperti *Atlantic.pwn* (6,74 MB / 108.381 baris) dibangun dengan pola penulisan yang sangat terikat pada semantik Pawn 3.2, sehingga langsung menghasilkan puluhan error jika dipaksa di-compile menggunakan Zeex Pawn 3.10.
 
-Namun, saat Pawn 3.2 di-porting ke Android dan mengompilasi script masif:
-1. **Infinite Hang / Freeze (>14 Menit)**: Compiler macet total di tahap kalkulasi alokasi stack dan tahap penulisan baris debug simbolik.
-2. **Error Sintaks Palsu**: Gagal membaca macro stringize (`#`) pada include umum (`mxINI`, `sqlitei`) dan error scope variabel lokal palsu (`symbol already defined: "i"`).
-3. **Android FUSE Crash**:
-   - `Error 100`: Gagal membaca include relatif mundur (`..\YSI_Internal\y_compilerdata`).
-   - `Error 17 & Error 0`: Terpotongnya pembacaan file di baris 44.130 (*short-read truncation*) sehingga memicu 27 error *undefined symbol*.
+Ketika mem-porting engine Pawn 3.2 native (C) ke Android untuk kebutuhan Pawno Studio Mobile, kami menemukan sejumlah hambatan kritis pada script berskala besar:
 
----
-
-## 2. Daftar Lengkap File yang Ditambahkan & Dimodifikasi
-
-### A. Kode Sumber Native Compiler (C / C++)
-| File | Status | Deskripsi Perubahan |
-| :--- | :---: | :--- |
-| [`app/src/main/cpp/CMakeLists.txt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/CMakeLists.txt) | **Modified** | Menambahkan target library `pawnc32`, flag `-O3 -flto`, isolasi symbol script, dan link opsi. |
-| [`app/src/main/cpp/hide_symbols.lds`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/hide_symbols.lds) | **Added** | Linker version script untuk menyembunyikan semua simbol internal C agar tidak bentrok antar library. |
-| [`app/src/main/cpp/compiler_jni.cpp`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compiler_jni.cpp) | **Modified** | Implementasi `compileNative32`, normalisasi path stack `..`, `fread` loop multi-chunk, dan cache I/O. |
-| [`app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc1.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc1.c) | **Modified** | Optimasi memoized DFS `max_stacksize_recurse`, perbaikan `declloc`, dan collapsing `..` di `case_insensitive_fopen`. |
-| [`app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc2.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc2.c) | **Modified** | Implementasi operator macro stringize (`#`) dan perbaikan scope pruning di `delete_symbols`. |
-| [`app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc6.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc6.c) | **Modified** | Penambahan 64 KB RAM write buffer (`bin_buf`) pada penulisan AMX byte code. |
-| [`app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sclist.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sclist.c) | **Modified** | Penambahan pointer `tail` ($O(1)$ insert) dan sequential index cache ($O(1)$ read) pada string list. |
-| [`app/src/main/cpp/compilers/pawnc-3.2/source/compiler/scmemfil.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/scmemfil.c) | **Modified** | Optimasi stream parsing baris `mfgets` menggunakan `memchr` SIMD. |
-| [`app/src/main/cpp/compilers/pawnc-3.10.7/source/compiler/sc1.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.10.7/source/compiler/sc1.c) | **Modified** | Sinkronisasi perbaikan collapsing `..` pada `case_insensitive_fopen`. |
-| [`app/src/main/cpp/compilers/pawnc-3.10.11/source/compiler/sc1.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.10.11/source/compiler/sc1.c) | **Modified** | Sinkronisasi perbaikan collapsing `..` pada `case_insensitive_fopen`. |
-
-### B. Lapisan Aplikasi Android (Kotlin & Jetpack Compose)
-| File | Status | Deskripsi Perubahan |
-| :--- | :---: | :--- |
-| [`app/.../data/compiler/CompilerVersion.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/data/compiler/CompilerVersion.kt) | **Modified** | Penambahan entri enum `COMPUPHASE_3_2("Pawn 3.2.3664 (Legacy)")`. |
-| [`app/.../data/compiler/PawnCompilerEngine.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/data/compiler/PawnCompilerEngine.kt) | **Modified** | Integrasi JNI 3.2, sanitasi argumen `-w`/`-d`, Pawno default flags (`-;+`, `-(+`), dan smart auto-recovery. |
-| [`app/.../data/compiler/CompilerDetector.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/data/compiler/CompilerDetector.kt) | **Added** | Heuristik analisis isi file script untuk auto-detect kebutuhan compiler Pawn 3.2 vs 3.10. |
-| [`app/.../data/compiler/CompileResult.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/data/compiler/CompileResult.kt) | **Modified** | Penambahan metadata `isAutoRecovered` dan `autoRecoveryReason`. |
-| [`app/.../data/compiler/CompilerSettingsRepository.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/data/compiler/CompilerSettingsRepository.kt) | **Modified** | Penyimpanan preferensi compiler version pengguna (DataStore). |
-| [`app/.../ui/screens/settings/SettingsScreen.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/ui/screens/settings/SettingsScreen.kt) | **Modified** | UI Dropdown pemilihan versi compiler aktif (Pawn 3.2, 3.10.7, 3.10.11, Auto). |
-| [`app/.../ui/screens/diagnostics/DiagnosticsScreen.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/ui/screens/diagnostics/DiagnosticsScreen.kt) | **Modified** | Banner diagnostik versi compiler dan notifikasi auto-recovery jika script dialihkan ke 3.2. |
-| [`app/.../ui/screens/ide/MainIdeViewModel.kt`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/java/com/pawno/studio/ui/screens/ide/MainIdeViewModel.kt) | **Modified** | Penyesuaian trigger build dan passing CompilerVersion ke background execution task. |
+1. **Infinite Hang / Freeze (>14 Menit)**: Compiler berhenti merespons saat proses perhitungan alokasi stack dan saat menulis informasi debug simbolik.
+2. **Crash & Hambatan Filesystem Android FUSE**:
+   - `Error 100 (cannot read file)`: Gagal resolve include yang menggunakan relative path mundur (seperti `..\YSI_Internal\y_compilerdata`).
+   - `Short-Read Truncation`: Pembacaan file sumber berukuran >4 MB terpotong di tengah jalan pada driver FUSE, memicu puluhan *undefined symbol error* palsu dan compiler abort.
+3. **Inkompatibilitas Sintaks & Scope Simbol**:
+   - Gagal mengurai token stringize (`#`) pada library/macro umum (`mxINI`, `sqlitei`).
+   - Muncul error scope palsu (`symbol already defined: "i"`) pada array lokal bertingkat.
 
 ---
 
-## 3. Optimasi Algoritmik Performa (Pawn C Engine)
+## 2. File yang Dimodifikasi
 
-### 1. Eliminasi Rekursi Call-Graph Eksponensial ($O(2^N) \rightarrow O(V + E)$)
-* **File:** [`sc1.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc1.c) (`max_stacksize_recurse`)
-* **Masalah:** Fungsi penghitung batas memori stack (`#pragma dynamic`) menelusuri seluruh graf pemanggilan fungsi secara rekursif tanpa penyimpanan state (*pure brute-force DFS*). Pada gamemode dengan >5.000 fungsi, sebuah fungsi dievaluasi ulang hingga puluhan juta kali.
+Berikut rincian file sumber yang dirombak untuk menyelesaikan isu-isu di atas:
+
+### Engine Native C / C++ (`app/src/main/cpp/`)
+* **`compilers/pawnc-3.2/source/compiler/sc1.c`**:
+  - Mengganti algoritma rekursi `max_stacksize_recurse` dengan Memoized DFS & cycle detector.
+  - Perbaikan inisialisasi compound level array lokal pada `declloc`.
+  - Integrasi normalisasi path `..` pada `case_insensitive_fopen`.
+* **`compilers/pawnc-3.2/source/compiler/sclist.c`**:
+  - Penambahan pointer `tail` ($O(1)$ append) dan sequential index cache ($O(1)$ read) pada struktur data string list.
+* **`compilers/pawnc-3.2/source/compiler/sc6.c`**:
+  - Penambahan memory write-buffer 64 KB (`bin_buf`) untuk pemangkasan syscall `fwrite` saat perakitan bytecode AMX.
+* **`compilers/pawnc-3.2/source/compiler/sc2.c`**:
+  - Implementasi handler token `#` (stringize macro).
+  - Perbaikan traversal pembersihan scope simbol lokal di `delete_symbols`.
+* **`compilers/pawnc-3.2/source/compiler/scmemfil.c`**:
+  - Pemanfaatan `memchr` hardware-accelerated pada fungsi pembacaan baris in-memory `mfgets`.
+* **`compiler_jni.cpp`**:
+  - Implementasi loop pembacaan mutlak multi-chunk `fread` pada `pc_opensrc`.
+  - Canonicalization path berbasis stack untuk menghapus relative traversal `..`.
+  - JNI bridge khusus versi 3.2 (`compileNative32`) dan alokasi pthread stack 8 MB.
+* **`CMakeLists.txt` & `hide_symbols.lds`**:
+  - Konfigurasi target compile terisolasi untuk `libpawnc32.so`, `libpawnc3107.so`, dan `libpawnc.so` menggunakan flag `-O3 -flto` serta pembatasan visibility simbol global.
+
+### Lapisan Android & UI (`app/src/main/java/com/pawno/studio/`)
+* **`data/compiler/CompilerDetector.kt`**: Heuristik pendeteksi karakteristik gamemode (Pawn 3.2 vs 3.10).
+* **`data/compiler/PawnCompilerEngine.kt`**: Engine orchestrator, sanitasi argumen CLI, auto-recovery fallback jika kompilasi 3.10 gagal pada gamemode legacy.
+* **`ui/screens/`**: UI selector compiler version, real-time diagnostic console, serta jump-to-line navigation.
+
+---
+
+## 3. Optimasi Algoritmik & Performa Engine C
+
+### 1. Eliminasi Bottleneck Rekursi Call-Graph Stack
+* **Target:** `sc1.c` (`max_stacksize_recurse`)
+* **Masalah:** Fungsi kalkulasi batas kebutuhan stack (`#pragma dynamic`) menelusuri seluruh graf pemanggilan fungsi secara brute-force DFS rekursif. Pada gamemode raksasa dengan ribuan fungsi yang saling memanggil, fungsi yang sama dihitung ulang jutaan kali, menyebabkan compiler macet lebih dari 9 menit.
 * **Solusi:** Dirombak menjadi **Memoized Depth-First Search** dengan deteksi siklus via `sym->compound`:
-  - `sym->compound = -1`: Simbol sedang aktif dalam rantai pemanggilan (mencegah *infinite loop recursion*).
-  - `sym->compound > 0`: Nilai stack maksimum sudah dihitung sebelumnya dan langsung digunakan (*cached*).
-* **Hasil:** Waktu komputasi terpangkas dari **570 detik (9,5 Menit) $\rightarrow$ 0,00 detik**.
+  - Nilai `-1`: Simbol sedang aktif dalam rantai traversal (mencegah infinite loop rekursif).
+  - Nilai `> 0`: Nilai stack maksimum fungsi tersebut sudah tersimpan dan langsung dipakai (*cached*).
+* **Hasil:** Waktu kalkulasi stack terpangkas drastis dari **570 detik (9,5 menit) menjadi < 0,01 detik**.
 
-### 2. Pointer Tail & Index Cache pada Linked List ($O(N^2) \rightarrow O(1)$)
-* **File:** [`sclist.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sclist.c) (`insert_string`, `get_string`), [`sc6.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc6.c) (`append_dbginfo`)
-* **Masalah:** Penambahan 150.000+ string debug pada linked-list berjalan dari *head* ke *tail* setiap kali penambahan:
-  $$\frac{N(N - 1)}{2} \approx \frac{150.000 \times 150.000}{2} \approx 11,25\text{ Miliar Traversal Operasi!}$$
+### 2. Eliminasi Bottleneck Traversal Linked List Debug Info
+* **Target:** `sclist.c` (`insert_string`, `get_string`) dan `sc6.c` (`append_dbginfo`)
+* **Masalah:** Penyimpanan informasi debug string (mencapai 150.000+ entri) memakai linked-list konvensional tanpa pointer akhir. Setiap penambahan elemen baru harus menelusuri dari elemen pertama hingga ujung list ($O(N^2)$ traversal secara akumulatif).
 * **Solusi:**
-  - Menambahkan pointer `tail` pada struct `stringlist` sehingga penambahan elemen di ujung list beroperasi dalam **$O(1)$**.
-  - Mengimplementasikan **Sequential Index Cache** (`last_node`, `last_index`) pada fungsi pembacaan berurutan `get_string()` sehingga beroperasi dalam **$O(1)$**.
-* **Hasil:** Waktu tahap assembler berkurang dari **576 detik (9,6 Menit) $\rightarrow$ 3 detik**.
+  - Menambahkan pointer `tail` langsung pada struct list, sehingga operasi append menjadi $O(1)$.
+  - Menambahkan **Sequential Index Cache** (`last_node`, `last_index`) pada fungsi `get_string` agar pembacaan sekuensial berjalan langsung tanpa looping dari awal.
+* **Hasil:** Tahap akhir assembler dan debug information generation terpangkas dari **576 detik (9,6 menit) menjadi hanya 3 detik**.
 
-### 3. Pengurangan 99.98% Syscall I/O (Buffer RAM 64 KB)
-* **File:** [`sc6.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc6.c) (`write_encoded`, `bin_buf`)
-* **Masalah:** Penulisan output AMX (91,5 MB) memanggil `pc_writebin(..., 1)` per satu byte. Hal ini memicu sekitar **~80 juta syscall `fwrite`** ke filesystem Linux/Android.
-* **Solusi:** Menambahkan buffer memori RAM 64 KB (`bin_buf`) di user-space. Data diakumulasikan dalam memori dan hanya di-*flush* ke disk saat buffer penuh atau proses kompilasi selesai.
+### 3. User-Space RAM Buffer untuk Menekan Disk Syscalls
+* **Target:** `sc6.c` (`write_encoded`, `bin_buf`)
+* **Masalah:** Pada implementasi aslinya, penulisan output binary AMX memanggil fungsi tulis per-byte tunggal. Untuk file output sebesar 91,5 MB, hal ini menghasilkan jutaan syscall `fwrite` bertubi-tubi ke disk Android.
+* **Solusi:** Membuat memory buffer 64 KB di user-space. Aliran data bytecode ditampung terlebih dahulu di RAM dan baru di-flush secara batch ke disk ketika buffer penuh atau proses kompilasi selesai.
 
-### 4. Peningkatan Kecepatan Pembacaan In-Memory Stream
-* **File:** [`scmemfil.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/scmemfil.c) (`mfgets`)
-* **Masalah:** Fungsi pembacaan baris memori menyalin chunk 256-byte, mencari `\n`, lalu memundurkan pointer kembali.
-* **Solusi:** Diubah menggunakan fungsi standar C `memchr('\n')` yang diakselerasi instruksi SIMD hardware processor.
+### 4. Optimalisasi Stream Parsing
+* **Target:** `scmemfil.c` (`mfgets`)
+* **Solusi:** Mengganti pencarian newline manual berbasis chunk loop dengan fungsi standar `memchr('\n')`, yang secara native memanfaatkan instruksi SIMD prosesor untuk scanning memori kecepatan tinggi.
 
 ---
 
-## 4. Perbaikan Kompatibilitas Semantik & Macro Pawn
+## 4. Penanganan Kompatibilitas Semantik & Macro
 
-### 1. Implementasi Operator Stringize (`#`) pada Makro
-* **File:** [`sc2.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc2.c) (`substpattern_string`)
-* **Masalah:** Macro modern seperti `INI_String(%0,%1,%2) if(!strcmp((%0), #%1, true))` gagal di-parse oleh Pawn 3.2 lama karena karakter `#` tidak diubah menjadi string literal.
-* **Solusi:** Mengimplementasikan pemrosesan flag `STRINGIZE` (flag 4) pada alur *macro replacement token stream* untuk packed maupun unpacked string literal.
+### 1. Dukungan Operator Stringize (`#`)
+* **Target:** `sc2.c` (`substpattern_string`)
+* **Masalah:** Macro modern seperti `INI_String(%0,%1,%2) if(!strcmp((%0), #%1, true))` gagal diurai di Pawn 3.2 lama karena parser belum mengonversi karakter `#` menjadi string literal.
+* **Solusi:** Menambahkan penanganan flag `STRINGIZE` pada alur penggantian macro token stream, baik untuk mode packed maupun unpacked string.
 
 ### 2. Perbaikan Pembersihan Scope Array Multidimensi
-* **File:** [`sc2.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc2.c) (`delete_symbols`), [`sc1.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc1.c) (`declloc`)
-* **Masalah:** Muncul error palsu `symbol already defined: "i"` dan `symbol already defined: "bizz"` di baris 81.699+. Sub-array multidimensi lokal memiliki nilai `compound = 0`. Pengecekan pembersihan simbol lokal berhenti mendadak saat menemukan `compound < level`.
-* **Solusi:**
-  1. Mengubah instruksi `break;` menjadi `{ root = sym; continue; }` di `delete_symbols()` agar traversal tabel simbol tetap berlanjut membersihkan simbol lokal lainnya.
-  2. Memastikan sub-array lokal mewarisi nilai `compound = nestlevel` saat dialokasikan di `declloc`.
+* **Target:** `sc2.c` (`delete_symbols`) dan `sc1.c` (`declloc`)
+* **Masalah:** Muncul error duplikasi simbol palsu (`symbol already defined: "i"`) pada baris 81.000+. Hal ini terjadi karena sub-array lokal multidimensi sempat terinisialisasi dengan `compound = 0`, sehingga proses pembersihan scope lokal terhenti sebelum waktunya.
+* **Solusi:** Memastikan sub-array mewarisi level compound yang sesuai saat deklarasi di `declloc`, serta mengubah loop pembersihan di `delete_symbols` agar tetap melanjutkan iterasi symbol table.
 
 ---
 
-## 5. Penyelesaian Masalah Filesystem Android FUSE (Analisis Foto Error)
+## 5. Penyelesaian Hambatan Filesystem Android FUSE
 
-### A. Diagnosa Foto `2.png` (`Error 100: cannot read from file: "..\YSI_Internal\y_compilerdata"`)
-* **Penyebab:** Pada `y_iterate.inc:107`, include memanggil `..\YSI_Internal\y_compilerdata`. Resolver case-insensitive sebelumnya membiarkan `/..` menempel di path string (`/storage/emulated/0/.../include/YSI_Data/..`). Kernel filesystem FUSE Android (`sdcardfs`/MediaProvider) secara tegas **menolak pemanggilan `opendir()` pada path berakhiran `/..`** (`ENOENT`), sehingga pencarian file gagal dan compiler memuntahkan Error 100.
-* **Perbaikan:** Mengimplementasikan algoritma canonicalization berbasis stack pada [`compiler_jni.cpp`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compiler_jni.cpp) dan ketiga file [`sc1.c`](file:///home/drgxel/Documents/android%20project/Pawno/app/src/main/cpp/compilers/pawnc-3.2/source/compiler/sc1.c). Begitu token `..` terdeteksi, folder induk sebelumnya (`YSI_Data`) langsung di-*pop* dari memori, sehingga path mengerut bersih menjadi `/storage/emulated/0/.../include/YSI_Internal/y_compilerdata.inc` tanpa menyisakan karakter `..`.
+### A. Penanganan Relatif Include Path (..) & Error 100
+* **Masalah:** Include kompleks (seperti pada framework YSI) kerap menggunakan path bertingkat mundur, misalnya `#include "..\YSI_Internal\y_compilerdata"`. Pada kernel Android dengan storage FUSE (`sdcardfs` / MediaProvider), pemanggilan `opendir()` atau `stat()` pada path yang menyisakan `/..` akan ditolak oleh sistem (`ENOENT`), memicu `Error 100: cannot read from file`.
+* **Solusi:** Mengimplementasikan path canonicalization berbasis stack pada `compiler_jni.cpp` dan `sc1.c`. Setiap kali token `..` ditemukan, folder induk sebelumnya langsung dipotong dari memori sehingga path menjadi bersih dan absolut sebelum diserahkan ke fungsi I/O kernel.
 
-### B. Diagnosa Foto `Screenshot_...-39-23.png` s/d `26-17.png` (27 Error & Compilation Aborted)
-* **Penyebab (Short-Read Truncation):** Gamemode `Atlantic.pwn` berukuran 6,74 MB. Pada fungsi `pc_opensrc` di `compiler_jni.cpp`:
-  ```cpp
-  size_t bytesRead = fread(&content[0], 1, fsize, f);
-  content.resize(bytesRead);
-  ```
-  `fread()` hanya dipanggil 1 kali tanpa loop. Pada driver storage Android FUSE, pembacaan terpotong di batas buffer ~3,6 MB. Pemanggilan `content.resize(bytesRead)` memotong paksa 2,9 MB sisa file tepat di baris **44.130** (`TogglePlayerControllableEx`). Baris 44.131 s/d 108.381 (tempat semua fungsi didefinisikan) tidak pernah dibaca oleh compiler, menghasilkan 26 error *undefined symbol* dan langsung diakhiri `Compilation aborted.` karena mencapai batas limit error Pawn.
-* **Perbaikan:** Menambahkan loop pembacaan mutlak pada `pc_opensrc`:
+### B. Penanganan Short-Read Truncation pada File Berukuran Besar (>4 MB)
+* **Masalah:** Gamemode masif seperti *Atlantic.pwn* berukuran 6,74 MB. Pemanggilan `fread()` tunggal pada file sebesar ini melalui layer FUSE Android tidak menjamin seluruh byte dibaca dalam satu panggilan; pembacaan sempat terpotong di sekitar 3,6 MB. Akibatnya, baris setelah titik potong (baris 44.130 ke atas) hilang, memicu puluhan error `undefined symbol` dan membuat kompilasi dibatalkan (*Compilation aborted*).
+* **Solusi:** Mengganti pembacaan instan dengan loop mutlak `fread` yang membaca file secara bertahap hingga seluruh ukuran file terpenuhi atau mencapai status `EOF`/error valid:
   ```cpp
   size_t totalBytesRead = 0;
   while (totalBytesRead < static_cast<size_t>(fsize)) {
       size_t n = fread(&content[totalBytesRead], 1, static_cast<size_t>(fsize) - totalBytesRead, f);
       if (n == 0) {
-          if (feof(f)) break;
-          if (ferror(f)) break;
+          if (feof(f) || ferror(f)) break;
       }
       totalBytesRead += n;
   }
   content.resize(totalBytesRead);
   ```
-  Seluruh 6,74 MB (108.381 baris) terbaca 100% tanpa ada pemotongan.
 
 ---
 
-## 6. Arsitektur Native Multi-Version & CMake
+## 6. Arsitektur Native Multi-Version & Isolasi Simbol
 
-Untuk memastikan Pawn 3.2, 3.10.7, dan 3.10.11 dapat hidup berdampingan dalam satu aplikasi Android tanpa konflik simbol C:
+Agar ketiga engine compiler (**Pawn 3.2 Legacy**, **Zeex 3.10.7**, dan **Zeex 3.10.11**) dapat berjalan stabil berdampingan dalam satu aplikasi tanpa tabrakan simbol memory:
 
 1. **Pemisahan Shared Library**:
-   - `libpawnc32.so` $\rightarrow$ CompuPhase Pawn 3.2.3664 (Legacy Engine)
-   - `libpawnc3107.so` $\rightarrow$ Zeex Pawn 3.10.7 Engine
-   - `libpawnc.so` $\rightarrow$ Zeex Pawn 3.10.11 Engine
+   - `libpawnc32.so`: Engine CompuPhase Pawn 3.2.3664 teroptimasi.
+   - `libpawnc3107.so`: Engine Zeex Pawn 3.10.7.
+   - `libpawnc.so`: Engine Zeex Pawn 3.10.11 standar open.mp.
 2. **Isolasi Simbol (`hide_symbols.lds`)**:
-   Compiler C Pawn memiliki ratusan variabel global (seperti `glbtab`, `inpf`, `fline`, dll.). Jika diekspor secara publik, pemanggilan versi satu akan mengotori memori versi lainnya. Digunakan version script:
-   ```text
-   {
-       global:
-           Java_com_pawno_studio_*;
-           JNI_OnLoad;
-       local: *;
-   };
-   ```
-   Serta opsi linker `-Wl,-Bsymbolic` dan `-Wl,-Bsymbolic-functions`.
-3. **Penyediaan Thread Stack 8 MB**:
-   Parsing rekursif ekspresi matematika gamemode besar membutuhkan stack mendalam. Engine JNI mengeksekusi kompilasi di thread terdedikasi (`pthread_attr_setstacksize` 8MB) guna mencegah *SIGSEGV Stack Overflow* pada thread UI Android.
+   Karena compiler Pawn berbasis C memiliki ratusan variabel global (seperti `glbtab`, `inpf`, `fline`), kami menerapkan version script linker agar simbol internal masing-masing engine berstatus `local`, mencegah *symbol collision* antar engine di runtime Android.
+3. **Dedicated 8 MB Stack Thread**:
+   Proses kompilasi dieksekusi pada background worker thread tersendiri dengan stack size 8 MB (`pthread_attr_setstacksize`), menghindari crash *SIGSEGV Stack Overflow* saat parser memproses ekspresi rekursif yang sangat dalam.
 
 ---
 
-## 7. Integrasi Kotlin & Lapisan Aplikasi Android
+## 7. Hasil Pengujian & Benchmark Nyata
 
-1. **Sanitasi Argumen CLI (`PawnCompilerEngine.kt`)**:
-   Pada Pawn 3.2, sebuah argumen angka yang berdiri sendiri (misalnya `-w` diikuti `203`) akan disalahartikan sebagai nama file input (`203.p`). Engine otomatis menggabungkannya menjadi satu token `-w203`.
-2. **Injeksi Aman Pawno Default Flags**:
-   Flag Pawno standar `-;+` (wajib titik koma) dan `-(+` (wajib tanda kurung) diinjeksikan secara otomatis untuk engine Pawn 3.2 tanpa menimpa konfigurasi kustom pengguna.
-3. **Smart Auto-Recovery Fallback**:
-   Jika pengguna mengompilasi pada mode `AUTO` menggunakan compiler 3.10 dan menemui error sintaks warisan CompuPhase (Error 010, Error 001, Warning 208, Error 029), engine secara cerdas melakukan *fallback* ke `libpawnc32.so`. Jika fallback berhasil 0 error, hasil Pawn 3.2 langsung diadopsi dengan notifikasi informatif di UI.
+Pengujian dilakukan menggunakan gamemode nyata **Atlantic.pwn (108.381 baris / ukuran 6,74 MB)** langsung pada perangkat Android:
 
----
-
-## 8. Tabel Komparasi & Hasil Benchmark Akhir
-
-Pengujian dilakukan menggunakan gamemode raksasa **Atlantic.pwn (~108.000 baris kode)**:
-
-| Parameter Evaluasi | Sebelum Optimasi | Sesudah Optimasi | Peningkatan |
+| Parameter Evaluasi | Sebelum Optimasi | Sesudah Optimasi | Status |
 | :--- | :---: | :---: | :---: |
-| **Status Kompilasi Gamemode Atlantic** | ❌ Gagal / Infinite Hang / 27 Error | ✅ **SUKSES (0 Error, 35 Warning)** | **100% Resolved** |
-| **Ukuran Output File AMX** | Tidak Terbentuk (0 Byte) | **91.580.724 Bytes (~91.5 MB)** | **File Valid Siap Main** |
-| **Pengecekan Stack (`max_stacksize`)** | 570 detik (9,5 Menit) | **< 0,01 detik** | **~57.000x Lebih Cepat** |
-| **Tahap Assembler & Debug (`sc6.c`)** | 576 detik (9,6 Menit) | **3,00 detik** | **~192x Lebih Cepat** |
-| **Resolusi Simbol Pass 2 (`sc1.c`)** | 175 detik | **48 detik** | **~3,6x Lebih Cepat** |
-| **Dukungan Path Relatif Mundur (`..`)** | ❌ Gagal (Error 100) | ✅ **100% Berhasil** | Android FUSE Fix |
-| **Integritas File Besar (>4 MB)** | ❌ Terpotong di baris 44.130 | ✅ **108.381 baris terbaca penuh** | Read Loop Fix |
-| **Total Waktu Kompilasi** | **> 14 Menit / Freeze / Crash** | **~2 Menit (129 Detik)** | **Produksi Standar Industri** |
+| **Hasil Kompilasi Atlantic.pwn** | Freeze >14 Menit / Crash FUSE | **SUKSES (0 Error, 35 Warning)** | **Selesai 100%** |
+| **Ukuran Output AMX** | 0 Byte (Gagal) | **91.580.724 Bytes (~91.5 MB)** | **Valid & Playable** |
+| **Kalkulasi Batas Stack (`sc1.c`)** | 570 detik (9,5 Menit) | **< 0,01 detik** | **~57.000x Lebih Cepat** |
+| **Assembler Pass & Debug (`sc6.c`)**| 576 detik (9,6 Menit) | **3,00 detik** | **~192x Lebih Cepat** |
+| **Pass 2 Symbol Resolution (`sc1.c`)**| 175 detik | **48 detik** | **~3,6x Lebih Cepat** |
+| **Relative Path Resolution (`..`)** | Error 100 | **100% Terbaca** | Resolved |
+| **Pembacaan File Gamemode >4 MB** | Terpotong di baris 44.130 | **108.381 baris terbaca utuh** | Resolved |
+| **Total Waktu Build** | **> 14 Menit (Hang)** | **~2 Menit (129 Detik)** | **Stabil Siap Pakai** |
 
 ---
-*Dokumentasi ini disusun sebagai acuan teknis pengembangan dan rilis publik Pawno Studio Mobile (2026).*
+*Dokumentasi ini merupakan catatan teknis resmi dari tim pengembang Pawno Studio Mobile.*
